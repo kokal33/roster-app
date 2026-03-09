@@ -5,7 +5,7 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Step 1: Get ADB
-Write-Host "[1/7] Setting up ADB..." -ForegroundColor White
+Write-Host "[1/8] Setting up ADB..." -ForegroundColor White
 $adbPath = $null
 if (Get-Command adb -ErrorAction SilentlyContinue) {
     $adbPath = "adb"
@@ -30,20 +30,19 @@ if (Get-Command adb -ErrorAction SilentlyContinue) {
 
 # Step 2: Check tablet is connected
 Write-Host ""
-Write-Host "[2/7] Checking tablet connection..." -ForegroundColor White
+Write-Host "[2/8] Checking tablet connection..." -ForegroundColor White
 Write-Host "Make sure the tablet is connected via USB and USB debugging is ON" -ForegroundColor Yellow
 Write-Host ""
 Read-Host "Press ENTER when ready"
 
 $devices = & $adbPath devices 2>&1 | Out-String
-if ($devices -notmatch "\t device") {
-    # Try to kill and restart adb server
+if ($devices -notmatch "\tdevice") {
     & $adbPath kill-server 2>$null
     Start-Sleep -Seconds 2
     & $adbPath start-server 2>$null
     Start-Sleep -Seconds 3
     $devices = & $adbPath devices 2>&1 | Out-String
-    if ($devices -notmatch "\t device") {
+    if ($devices -notmatch "\tdevice") {
         Write-Host "No tablet detected! Check USB cable and USB debugging." -ForegroundColor Red
         exit 1
     }
@@ -52,7 +51,7 @@ Write-Host "[OK] Tablet connected" -ForegroundColor Green
 
 # Step 3: Check root access
 Write-Host ""
-Write-Host "[3/7] Checking root access..." -ForegroundColor White
+Write-Host "[3/8] Checking root access..." -ForegroundColor White
 $rootCheck = & $adbPath shell su 0 id 2>&1 | Out-String
 if ($rootCheck -notmatch "uid=0") {
     Write-Host "ERROR: Tablet is not rooted!" -ForegroundColor Red
@@ -68,7 +67,7 @@ Write-Host "[OK] Root access available" -ForegroundColor Green
 
 # Step 4: Remove device owner + disable old app
 Write-Host ""
-Write-Host "[4/7] Removing device owner lock..." -ForegroundColor White
+Write-Host "[4/8] Removing device owner lock..." -ForegroundColor White
 & $adbPath shell su 0 rm /data/system/device_owner_2.xml 2>$null
 & $adbPath shell su 0 rm /data/system/device_policies.xml 2>$null
 & $adbPath shell su 0 am force-stop com.nfccheckin 2>$null
@@ -77,7 +76,7 @@ Write-Host "[OK] Device lock removed, old app disabled" -ForegroundColor Green
 
 # Step 5: Reboot and wait
 Write-Host ""
-Write-Host "[5/7] Rebooting tablet..." -ForegroundColor White
+Write-Host "[5/8] Rebooting tablet..." -ForegroundColor White
 & $adbPath reboot
 Write-Host "Waiting for tablet to restart (about 60 seconds)..."
 Start-Sleep -Seconds 15
@@ -94,14 +93,14 @@ Write-Host "[OK] Tablet rebooted" -ForegroundColor Green
 
 # Step 6: Uninstall old app
 Write-Host ""
-Write-Host "[6/7] Uninstalling old app..." -ForegroundColor White
+Write-Host "[6/8] Uninstalling old app..." -ForegroundColor White
 & $adbPath shell pm enable com.nfccheckin 2>$null
 & $adbPath uninstall com.nfccheckin 2>$null
 Write-Host "[OK] Old app removed" -ForegroundColor Green
 
 # Step 7: Download and install new app
 Write-Host ""
-Write-Host "[7/7] Downloading and installing latest ROSTER app..." -ForegroundColor White
+Write-Host "[7/8] Downloading and installing latest ROSTER app..." -ForegroundColor White
 
 $release = Invoke-RestMethod -Uri "https://api.github.com/repos/kokal33/roster-app/releases/latest" -Headers @{"Accept"="application/vnd.github+json"}
 $apkAsset = $release.assets | Where-Object { $_.name -like "*.apk" } | Select-Object -First 1
@@ -121,9 +120,16 @@ if ($LASTEXITCODE -ne 0) {
     exit 1
 }
 Remove-Item $tempApk -Force
+Write-Host "[OK] App installed" -ForegroundColor Green
 
-# Launch
+# Step 8: Set as default launcher and auto-start on boot
+Write-Host ""
+Write-Host "[8/8] Setting up auto-start on boot..." -ForegroundColor White
+& $adbPath shell cmd package set-home-activity com.nfccheckin/.SetupActivity 2>$null
+& $adbPath shell pm disable-user --user 0 com.android.launcher3 2>$null
 & $adbPath shell am start -n com.nfccheckin/.SetupActivity
+Start-Sleep -Seconds 2
+Write-Host "[OK] App set as default launcher" -ForegroundColor Green
 
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Cyan
@@ -132,5 +138,6 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "The tablet shows the setup screen."
 Write-Host "Scan the QR code from the admin panel to pair it."
+Write-Host "The app will auto-start on every boot."
 Write-Host ""
 Read-Host "Press ENTER to close"
